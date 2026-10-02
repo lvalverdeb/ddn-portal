@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db";
 async function requireAdmin() {
   const session = await auth();
   if (!session?.user?.email) return null;
-  const user = await prisma.portalUser.findUnique({ where: { email: session.user.email } });
+  const user = await prisma.user.findUnique({ where: { email: session.user.email } });
   return user?.role === "ADMIN" ? user : null;
 }
 

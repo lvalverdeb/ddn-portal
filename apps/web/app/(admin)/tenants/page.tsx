@@ -6,7 +6,7 @@ export default async function TenantsPage() {
   const session = await auth();
   if (!session?.user?.email) redirect("/login");
 
-  const admin = await prisma.portalUser.findUnique({ where: { email: session.user.email } });
+  const admin = await prisma.user.findUnique({ where: { email: session.user.email } });
   if (admin?.role !== "ADMIN") {
     return <main style={{ padding: "2rem" }}>Forbidden -- portal-admin only.</main>;
   }

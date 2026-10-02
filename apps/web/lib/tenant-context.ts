@@ -7,7 +7,7 @@ export class NoTenantError extends Error {}
 
 /**
  * Every Route Handler that needs to call DDN resolves its tenant this way --
- * session -> PortalUser -> Tenant -> credential -- never by trusting a
+ * session -> User -> Tenant -> credential -- never by trusting a
  * tenant id the client sent. The DDN credential this builds a client with
  * never leaves this process.
  */
@@ -17,11 +17,11 @@ export async function requireTenantContext() {
     throw new UnauthenticatedError();
   }
 
-  const portalUser = await prisma.portalUser.findUnique({
+  const portalUser = await prisma.user.findUnique({
     where: { email: session.user.email },
     include: { tenant: true },
   });
-  if (!portalUser) {
+  if (!portalUser || !portalUser.tenant) {
     throw new NoTenantError();
   }
 

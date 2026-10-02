@@ -11,7 +11,7 @@ import { prisma } from "./db";
  * Email (magic link) is the v1 provider -- no password to manage, no OAuth
  * app registration needed per customer. Swappable later; nothing else in
  * this repo depends on which provider issued the session, only on the
- * session existing and `tenant-context.ts` resolving a `PortalUser` from it.
+ * session existing and `tenant-context.ts` resolving a `User` from it.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),

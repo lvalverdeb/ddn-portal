@@ -86,7 +86,7 @@ model Tenant {
   ddnSpecVersion   String?   @map("ddn_spec_version")
   ddnSpecCheckedAt DateTime? @map("ddn_spec_checked_at")
 
-  users         PortalUser[]
+  users         User[]
   uploadBatches UploadBatch[]
   auditLogs     AuditLog[]
 
@@ -96,12 +96,20 @@ model Tenant {
   @@map("tenants")
 }
 
-model PortalUser {
+// Named `User`, not `PortalUser`, because @auth/prisma-adapter's
+// implementation hard-codes `prisma.user.*` calls -- @@map only renames the
+// SQL table, not the generated client accessor, so any other model name
+// leaves the adapter calling an undefined delegate. tenantId is nullable
+// because Auth.js's createUser payload never includes it: a user exists
+// (and can sign in) before being linked to a tenant.
+model User {
   id            String   @id @default(cuid())
-  tenantId      String   @map("tenant_id")
-  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId      String?  @map("tenant_id")
+  tenant        Tenant?  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   email         String   @unique
   name          String?
+  emailVerified DateTime? @map("email_verified")
+  image         String?
   role          PortalRole @default(MEMBER)
 
   accounts Account[]
@@ -118,7 +126,7 @@ model PortalUser {
 model Account {
   id                String  @id @default(cuid())
   userId            String  @map("user_id")
-  user              PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   type              String
   provider          String
   providerAccountId String  @map("provider_account_id")
@@ -138,7 +146,7 @@ model Session {
   id           String   @id @default(cuid())
   sessionToken String   @unique @map("session_token")
   userId       String   @map("user_id")
-  user         PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expires      DateTime
 
   @@map("sessions")
