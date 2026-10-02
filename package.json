@@ -11,7 +11,8 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "db:generate": "pnpm --filter @ddn-portal/db generate",
-    "db:migrate": "pnpm --filter @ddn-portal/db migrate"
+    "db:migrate": "pnpm --filter @ddn-portal/db migrate",
+    "db:seed": "pnpm --filter @ddn-portal/db seed"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
