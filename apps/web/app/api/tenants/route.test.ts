@@ -120,4 +120,32 @@ describe.skipIf(!databaseUrl)("POST /api/tenants ownerEmail", () => {
     const createdTenant = await prisma.tenant.findUnique({ where: { slug: `t-${runId}-3` } });
     expect(createdTenant).toBeNull();
   });
+
+  it("409s on a differently-cased ownerEmail already belonging to another tenant", async () => {
+    const ownerEmail = `owner-conflict-case-${runId}@example.com`;
+    const otherTenant = await prisma.tenant.create({
+      data: {
+        name: "Other2",
+        slug: `t-${runId}-other2`,
+        ddnBaseUrl: "https://ddn.example.com",
+        ddnCustomerId: `t-${runId}-other2`,
+        credentialKind: "NONE",
+      },
+    });
+    await prisma.user.create({ data: { email: ownerEmail, tenantId: otherTenant.id } });
+
+    const res = await postJson({
+      name: "T5",
+      slug: `t-${runId}-5`,
+      ddnBaseUrl: "https://ddn.example.com",
+      ownerEmail: `Owner-Conflict-Case-${runId}@Example.com`,
+    });
+    expect(res.status).toBe(409);
+
+    const createdTenant = await prisma.tenant.findUnique({ where: { slug: `t-${runId}-5` } });
+    expect(createdTenant).toBeNull();
+
+    const owner = await prisma.user.findUnique({ where: { email: ownerEmail } });
+    expect(owner?.tenantId).toBe(otherTenant.id);
+  });
 });
