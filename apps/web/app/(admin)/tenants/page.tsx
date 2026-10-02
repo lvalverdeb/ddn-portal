@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { NewTenantForm } from "./new-tenant-form";
 
 export default async function TenantsPage() {
   const session = await auth();
@@ -11,11 +12,15 @@ export default async function TenantsPage() {
     return <main style={{ padding: "2rem" }}>Forbidden -- portal-admin only.</main>;
   }
 
-  const tenants = await prisma.tenant.findMany({ orderBy: { createdAt: "desc" } });
+  const tenants = await prisma.tenant.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { users: { select: { email: true } } },
+  });
 
   return (
     <main style={{ padding: "2rem", fontFamily: "sans-serif" }}>
       <h1>Tenants</h1>
+      <NewTenantForm />
       <table cellPadding={8} style={{ borderCollapse: "collapse", width: "100%" }}>
         <thead>
           <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
@@ -25,6 +30,7 @@ export default async function TenantsPage() {
             <th>DDN base URL</th>
             <th>Credential</th>
             <th>Spec version observed</th>
+            <th>Owner(s)</th>
           </tr>
         </thead>
         <tbody>
@@ -36,6 +42,7 @@ export default async function TenantsPage() {
               <td>{t.ddnBaseUrl}</td>
               <td>{t.credentialKind}</td>
               <td>{t.ddnSpecVersion ?? "not yet checked"}</td>
+              <td>{t.users.map((u) => u.email).join(", ") || "none"}</td>
             </tr>
           ))}
         </tbody>
