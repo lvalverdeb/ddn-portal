@@ -26,6 +26,21 @@ export interface DdnClientOptions {
 }
 
 /**
+ * Bounds `getLatestProfile`/`getOpenApiSpec` only -- a tenant's `ddnBaseUrl`
+ * is customer-supplied infrastructure this process doesn't control, and a
+ * connection that's accepted but never answered must not wedge a caller
+ * that loops over multiple tenants serially (apps/worker's
+ * profile-refresh poll loop). Deliberately NOT applied to
+ * `submitEnvelopeBatch`/`requestPickup`/`getEnvelope`: DDN's worked example
+ * runs thousands of envelopes/day (§10), a large batch can legitimately
+ * take longer than a profile fetch, and `AbortSignal`'s timeout fires on
+ * total response time, not idle time -- aborting a slow-but-successful
+ * ingest call would create exactly the "did it actually land?" ambiguity
+ * the idempotency design exists to avoid.
+ */
+const READ_TIMEOUT_MS = 30_000;
+
+/**
  * Thin, typed wrapper over DDN's HTTP API (`profiles/ddn/api/`). Every
  * method name and path here was checked against the routers in that repo
  * (`routers/envelopes.py`, `routers/pickups.py`, `routers/profiles.py`),
@@ -74,11 +89,23 @@ export class DdnClient {
   }
 
   async getLatestProfile(profileId: string): Promise<ProfileResponse> {
-    return this.request<ProfileResponse>("GET", `/profiles/${encodeURIComponent(profileId)}`);
+    return this.request<ProfileResponse>(
+      "GET",
+      `/profiles/${encodeURIComponent(profileId)}`,
+      undefined,
+      undefined,
+      READ_TIMEOUT_MS,
+    );
   }
 
   async getOpenApiSpec(): Promise<Record<string, unknown>> {
-    return this.request<Record<string, unknown>>("GET", "/openapi.json");
+    return this.request<Record<string, unknown>>(
+      "GET",
+      "/openapi.json",
+      undefined,
+      undefined,
+      READ_TIMEOUT_MS,
+    );
   }
 
   private async request<T>(
@@ -86,6 +113,7 @@ export class DdnClient {
     path: string,
     body?: unknown,
     idempotencyKey?: string,
+    timeoutMs?: number,
   ): Promise<T> {
     let headers: Record<string, string> = { Accept: "application/json" };
     if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -96,6 +124,7 @@ export class DdnClient {
       method,
       headers,
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal: timeoutMs !== undefined ? AbortSignal.timeout(timeoutMs) : undefined,
     });
 
     const text = await res.text();

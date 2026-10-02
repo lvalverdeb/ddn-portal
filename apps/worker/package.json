@@ -10,7 +10,8 @@
   "dependencies": {
     "@ddn-portal/bridge": "workspace:*",
     "@ddn-portal/ddn-client": "workspace:*",
-    "@ddn-portal/db": "workspace:*"
+    "@ddn-portal/db": "workspace:*",
+    "@ddn-portal/tenant-ops": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.19.1",

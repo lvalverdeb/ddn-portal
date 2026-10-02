@@ -30,6 +30,7 @@ export default async function TenantsPage() {
             <th>DDN base URL</th>
             <th>Credential</th>
             <th>Spec version observed</th>
+            <th>Last checked</th>
             <th>Owner(s)</th>
           </tr>
         </thead>
@@ -42,6 +43,7 @@ export default async function TenantsPage() {
               <td>{t.ddnBaseUrl}</td>
               <td>{t.credentialKind}</td>
               <td>{t.ddnSpecVersion ?? "not yet checked"}</td>
+              <td>{t.ddnSpecCheckedAt ? t.ddnSpecCheckedAt.toISOString() : "never"}</td>
               <td>{t.users.map((u) => u.email).join(", ") || "none"}</td>
             </tr>
           ))}

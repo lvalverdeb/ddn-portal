@@ -29,6 +29,9 @@ importers:
       '@ddn-portal/ddn-client':
         specifier: workspace:*
         version: link:../../packages/ddn-client
+      '@ddn-portal/tenant-ops':
+        specifier: workspace:*
+        version: link:../../packages/tenant-ops
       next:
         specifier: ^14.2.15
         version: 14.2.35(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
@@ -75,6 +78,9 @@ importers:
       '@ddn-portal/ddn-client':
         specifier: workspace:*
         version: link:../../packages/ddn-client
+      '@ddn-portal/tenant-ops':
+        specifier: workspace:*
+        version: link:../../packages/tenant-ops
     devDependencies:
       '@types/node':
         specifier: ^20.16.11
@@ -119,6 +125,25 @@ importers:
         version: 5.9.3
 
   packages/ddn-client:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.16.11
+        version: 20.19.43
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.4
+        version: 2.1.9(@types/node@20.19.43)
+
+  packages/tenant-ops:
+    dependencies:
+      '@ddn-portal/db':
+        specifier: workspace:*
+        version: link:../db
+      '@ddn-portal/ddn-client':
+        specifier: workspace:*
+        version: link:../ddn-client
     devDependencies:
       '@types/node':
         specifier: ^20.16.11

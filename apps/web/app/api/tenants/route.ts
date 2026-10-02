@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { refreshTenantProfile } from "@ddn-portal/tenant-ops";
 
 class OwnerConflictError extends Error {}
 
@@ -29,6 +30,7 @@ export async function GET() {
       credentialKind: true,
       profileId: true,
       ddnSpecVersion: true,
+      ddnSpecCheckedAt: true,
       createdAt: true,
     },
     orderBy: { createdAt: "desc" },
@@ -92,6 +94,14 @@ export async function POST(request: Request) {
       });
 
       return { tenant, owner };
+    });
+
+    // Best-effort, inline: a slow or failing DDN instance must never hold up
+    // tenant creation's 201. The worker's own poll loop (profileRefreshLoop
+    // in apps/worker/src/index.ts) is the reliable path; this is just so the
+    // admin table isn't empty for the common case where DDN answers fine.
+    refreshTenantProfile(tenant.id).catch((err) => {
+      console.error(`inline profile refresh failed for tenant ${tenant.id}:`, err);
     });
 
     return NextResponse.json({ tenant }, { status: 201 });
