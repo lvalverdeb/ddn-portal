@@ -54,7 +54,7 @@ export class BridgeSubmitter implements BatchSubmitter {
 
       let priority: number;
       try {
-        priority = tierScore(ctx.profile.priority_tiers, row.priority_tier);
+        priority = tierScore(ctx.profile.objective.priority.tiers, row.priority_tier);
       } catch (err) {
         if (err instanceof UnknownTierError) {
           flags.push({

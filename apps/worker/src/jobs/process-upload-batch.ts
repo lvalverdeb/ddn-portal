@@ -1,6 +1,6 @@
 import { createBatchSubmitter } from "@ddn-portal/bridge";
 import type { RawEnvelopeRow, RawMailbagRow } from "@ddn-portal/bridge";
-import { DdnClient, resolveTenantCredential, type ProfileSummary } from "@ddn-portal/ddn-client";
+import { DdnClient, resolveTenantCredential, parseProfileSummary } from "@ddn-portal/ddn-client";
 import { prisma } from "@ddn-portal/db";
 
 /**
@@ -27,7 +27,7 @@ export async function processUploadBatch(batchId: string, options: { mapboxApiKe
     if (!tenant.profileCache || !tenant.profileId) {
       throw new Error(`tenant ${tenant.id} has no cached profile yet -- run onboarding first`);
     }
-    const profile = tenant.profileCache as unknown as ProfileSummary;
+    const profile = parseProfileSummary(tenant.profileCache);
 
     const credential = resolveTenantCredential(tenant);
     const ddnClient = new DdnClient({ baseUrl: tenant.ddnBaseUrl, credential });
@@ -42,7 +42,7 @@ export async function processUploadBatch(batchId: string, options: { mapboxApiKe
     const result = await submitter.submit(
       {
         ddnClient,
-        customerId: tenant.id,
+        customerId: tenant.ddnCustomerId,
         profile,
         idempotencyKey: batch.idempotencyKey,
       },

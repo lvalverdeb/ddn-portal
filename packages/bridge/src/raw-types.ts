@@ -13,7 +13,7 @@ export interface RawEnvelopeRow {
   package_type: string;
   mailbag_id: string;
   address: string;
-  /** Tenant's own priority tier name, from `ProfileSummary.priority_tiers`. */
+  /** Tenant's own priority tier name, from `ProfileSummary.objective.priority.tiers`. */
   priority_tier: string;
   sla_date: string;
   weight_g?: number;

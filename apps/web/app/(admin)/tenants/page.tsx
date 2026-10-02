@@ -21,6 +21,7 @@ export default async function TenantsPage() {
           <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
             <th>Name</th>
             <th>Slug</th>
+            <th>DDN customer_id</th>
             <th>DDN base URL</th>
             <th>Credential</th>
             <th>Spec version observed</th>
@@ -31,6 +32,7 @@ export default async function TenantsPage() {
             <tr key={t.id} style={{ borderBottom: "1px solid #eee" }}>
               <td>{t.name}</td>
               <td>{t.slug}</td>
+              <td>{t.ddnCustomerId}</td>
               <td>{t.ddnBaseUrl}</td>
               <td>{t.credentialKind}</td>
               <td>{t.ddnSpecVersion ?? "not yet checked"}</td>

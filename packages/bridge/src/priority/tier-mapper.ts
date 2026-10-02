@@ -13,7 +13,7 @@ export function tierScore(tiers: Band[], tierName: string): number {
   if (!band) {
     throw new UnknownTierError(tierName, tiers.map((t) => t.name));
   }
-  return band.low;
+  return band.low.value;
 }
 
 export class UnknownTierError extends Error {

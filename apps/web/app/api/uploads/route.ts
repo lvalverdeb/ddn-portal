@@ -39,24 +39,47 @@ export async function POST(request: Request) {
     );
   }
 
-  const batch = await prisma.uploadBatch.create({
-    data: {
-      tenantId: ctx.tenant.id,
-      mailbagId: mailbag.mailbag_id,
-      fileName,
-      idempotencyKey: randomUUID(),
-      chunks: {
-        create: [
-          { kind: "MAILBAG", rawRow: mailbag as Prisma.InputJsonValue },
-          ...envelopes.map((row) => ({
-            kind: "ENVELOPE" as const,
-            rawRow: row as Prisma.InputJsonValue,
-          })),
-        ],
+  // Mirrors DDN's own §13.1 convention (profiles/ddn/api/idempotency.py): a
+  // caller-supplied key lets a retried/double-clicked upload be recognized
+  // as the same request rather than a new one. Falling back to a fresh
+  // randomUUID() when no header is sent keeps this endpoint usable without
+  // one, but then provides no dedup for that particular call -- callers
+  // that care about retries should send the header.
+  const idempotencyKey = request.headers.get("Idempotency-Key") ?? randomUUID();
+
+  let batch;
+  try {
+    batch = await prisma.uploadBatch.create({
+      data: {
+        tenantId: ctx.tenant.id,
+        mailbagId: mailbag.mailbag_id,
+        fileName,
+        idempotencyKey,
+        chunks: {
+          create: [
+            { kind: "MAILBAG", rawRow: mailbag as Prisma.InputJsonValue },
+            ...envelopes.map((row) => ({
+              kind: "ENVELOPE" as const,
+              rawRow: row as Prisma.InputJsonValue,
+            })),
+          ],
+        },
       },
-    },
-    include: { chunks: true },
-  });
+      include: { chunks: true },
+    });
+  } catch (err) {
+    // P2002: unique constraint violation on (tenantId, idempotencyKey) --
+    // a replay, not a new upload. Return the batch already on file instead
+    // of creating a second one that would double-submit to DDN.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      const existing = await prisma.uploadBatch.findUniqueOrThrow({
+        where: { tenantId_idempotencyKey: { tenantId: ctx.tenant.id, idempotencyKey } },
+        include: { chunks: true },
+      });
+      return NextResponse.json({ batch: existing }, { status: 202 });
+    }
+    throw err;
+  }
 
   await prisma.auditLog.create({
     data: {

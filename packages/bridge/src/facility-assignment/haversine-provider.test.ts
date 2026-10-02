@@ -2,9 +2,19 @@ import { describe, expect, it } from "vitest";
 import type { Facility } from "@ddn-portal/ddn-client";
 import { HaversineFacilityAssignmentProvider } from "./haversine-provider";
 
-const NORTH: Facility = { facility_id: "north", lat: 40.7, lon: -74.0, allowed: "*", overnight_allowed: true };
-const SOUTH: Facility = { facility_id: "south", lat: 40.6, lon: -74.0, allowed: "*", overnight_allowed: true };
-const FAR: Facility = { facility_id: "far", lat: 41.5, lon: -74.0, allowed: "*", overnight_allowed: true };
+function facility(id: string, lat: number, lon: number): Facility {
+  return {
+    id,
+    name: id,
+    roles: ["hub"],
+    coords: { lat, lon, provenance: "measured" },
+    route_release: { value: "06:00", provenance: "measured" },
+  };
+}
+
+const NORTH = facility("north", 40.7, -74.0);
+const SOUTH = facility("south", 40.6, -74.0);
+const FAR = facility("far", 41.5, -74.0);
 
 describe("HaversineFacilityAssignmentProvider", () => {
   it("assigns the single nearest facility unambiguously when it's far from the runner-up", async () => {

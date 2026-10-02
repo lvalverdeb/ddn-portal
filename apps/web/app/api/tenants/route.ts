@@ -39,11 +39,12 @@ export async function POST(request: Request) {
   if (!admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const body = await request.json();
-  const { name, slug, ddnBaseUrl, profileId } = body as {
+  const { name, slug, ddnBaseUrl, profileId, ddnCustomerId } = body as {
     name?: string;
     slug?: string;
     ddnBaseUrl?: string;
     profileId?: string;
+    ddnCustomerId?: string;
   };
   if (!name || !slug || !ddnBaseUrl) {
     return NextResponse.json(
@@ -53,7 +54,10 @@ export async function POST(request: Request) {
   }
 
   const tenant = await prisma.tenant.create({
-    data: { name, slug, ddnBaseUrl, profileId, credentialKind: "NONE" },
+    // ddnCustomerId defaults to slug -- see the field's comment in
+    // schema.prisma for why this must never silently become this row's own
+    // `id` (a portal-internal cuid DDN has never seen).
+    data: { name, slug, ddnBaseUrl, profileId, ddnCustomerId: ddnCustomerId || slug, credentialKind: "NONE" },
   });
 
   await prisma.auditLog.create({

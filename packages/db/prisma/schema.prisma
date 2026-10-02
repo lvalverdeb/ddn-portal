@@ -58,6 +58,15 @@ model Tenant {
   slug      String   @unique
   ddnBaseUrl String  @map("ddn_base_url")
 
+  // The customer_id DDN's own API expects on every Envelope/Mailbag row
+  // (opaque to DDN, used only for return-run grouping per spec §9.1) --
+  // deliberately distinct from this table's own `id`/`slug`, which are
+  // portal-internal identifiers DDN has never seen. Defaults to `slug` at
+  // tenant creation but is independently editable, so a tenant whose DDN
+  // deployment already has an established customer_id convention (e.g.
+  // imported before the portal existed) isn't forced to match our slug.
+  ddnCustomerId String @map("ddn_customer_id")
+
   credentialKind CredentialKind @default(NONE) @map("credential_kind")
   // Reference into a secrets store (KMS / envelope-encrypted blob) --
   // never the credential value itself. Open item: exact storage mechanism,
@@ -163,6 +172,10 @@ model UploadBatch {
   errorMessage String?   @map("error_message")
 
   @@index([tenantId, status])
+  // A caller-supplied Idempotency-Key must dedupe within a tenant: retried
+  // or double-clicked uploads with the same key must return the existing
+  // batch, never create a second one that double-submits to DDN.
+  @@unique([tenantId, idempotencyKey])
   @@map("upload_batches")
 }
 

@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { tierScore, UnknownTierError } from "./tier-mapper";
 
 const TIERS = [
-  { name: "standard", low: 0, tier: 0 },
-  { name: "express", low: 100, tier: 1 },
-  { name: "overnight", low: 200, tier: 2 },
+  { name: "standard", low: { value: 0, provenance: "measured" }, tier: 0 },
+  { name: "express", low: { value: 100, provenance: "measured" }, tier: 1 },
+  { name: "overnight", low: { value: 200, provenance: "measured" }, tier: 2 },
 ];
 
 describe("tierScore", () => {

@@ -40,18 +40,18 @@ export class HaversineFacilityAssignmentProvider implements FacilityAssignmentPr
       throw new Error("no facilities in the tenant's cached profile to assign against");
     }
     const ranked = facilities
-      .map((f) => ({ facility: f, distance: haversineMeters(point, f) }))
+      .map((f) => ({ facility: f, distance: haversineMeters(point, f.coords) }))
       .sort((x, y) => x.distance - y.distance);
 
     const [nearest, runnerUp] = ranked;
     const ambiguous = runnerUp !== undefined && runnerUp.distance - nearest.distance < this.marginM;
 
     return {
-      facilityId: nearest.facility.facility_id,
+      facilityId: nearest.facility.id,
       ambiguous,
       candidates: ambiguous
-        ? [nearest.facility.facility_id, runnerUp!.facility.facility_id]
-        : [nearest.facility.facility_id],
+        ? [nearest.facility.id, runnerUp!.facility.id]
+        : [nearest.facility.id],
     };
   }
 }
