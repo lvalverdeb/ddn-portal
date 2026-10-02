@@ -35,6 +35,21 @@ Requires a running DDN instance (see the `ddn` repo's `make bootstrap`) and
 `DATABASE_URL` pointed at a local Postgres. Copy `apps/web/.env.example` to
 `apps/web/.env.local` and fill in values.
 
+### First-deploy admin bootstrap
+
+There is no self-service path to the first `ADMIN` account — `POST
+/api/tenants` (where tenants and their owners get created) is itself gated
+behind an existing admin session. Each new environment (including first
+local setup) needs one explicit seed step:
+
+```sh
+SEED_ADMIN_EMAIL=you@example.com pnpm db:seed
+```
+
+Idempotent — safe to re-run. Promotes the row to `ADMIN` if it already
+exists, creates a tenant-less admin row if not. Sign in with that email via
+the configured `EMAIL_SERVER` (magic link) afterward.
+
 ## Status
 
 Phase 0 (scaffold) — see the architecture plan for the full phased roadmap
