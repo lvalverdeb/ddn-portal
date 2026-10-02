@@ -82,6 +82,20 @@ describe.skipIf(!databaseUrl)("POST /api/tenants ownerEmail", () => {
     expect(owner?.tenantId).toBe(tenant.id);
   });
 
+  it("normalizes a mixed-case ownerEmail to lowercase, matching Auth.js's sign-in lookup", async () => {
+    const mixedCaseEmail = `Owner-Mixed-${runId}@Example.com`;
+    const res = await postJson({
+      name: "T4",
+      slug: `t-${runId}-4`,
+      ddnBaseUrl: "https://ddn.example.com",
+      ownerEmail: mixedCaseEmail,
+    });
+    expect(res.status).toBe(201);
+    const { tenant } = await res.json();
+    const owner = await prisma.user.findUnique({ where: { email: mixedCaseEmail.toLowerCase() } });
+    expect(owner?.tenantId).toBe(tenant.id);
+  });
+
   it("409s, and creates no tenant, when ownerEmail already belongs to another tenant", async () => {
     const ownerEmail = `owner-conflict-${runId}@example.com`;
     const otherTenant = await prisma.tenant.create({

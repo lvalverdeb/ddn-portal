@@ -58,6 +58,14 @@ export async function POST(request: Request) {
     );
   }
 
+  // Lowercased, same reasoning as packages/db's seedAdmin: @auth/core
+  // normalizes the sign-in identifier to lowercase before every
+  // getUserByEmail lookup, so a row stored in whatever case the operator
+  // typed would never match that lookup -- the owner's own magic link
+  // would silently create a second, tenant-less row instead of signing
+  // them in as the one just linked here.
+  const normalizedOwnerEmail = ownerEmail?.trim().toLowerCase() || undefined;
+
   try {
     const { tenant } = await prisma.$transaction(async (tx) => {
       const tenant = await tx.tenant.create({
@@ -68,19 +76,19 @@ export async function POST(request: Request) {
       });
 
       let owner = null;
-      if (ownerEmail) {
+      if (normalizedOwnerEmail) {
         // Checked inside the same transaction as the create, not before it:
         // an owner already linked to a *different* tenant must never be
         // silently reassigned. A tenant-less row (self-provisioned via
         // sign-in, or never linked) is fair game to link here -- that's
         // exactly the state this field exists to resolve.
-        const existingOwner = await tx.user.findUnique({ where: { email: ownerEmail } });
+        const existingOwner = await tx.user.findUnique({ where: { email: normalizedOwnerEmail } });
         if (existingOwner?.tenantId) {
           throw new OwnerConflictError();
         }
         owner = existingOwner
-          ? await tx.user.update({ where: { email: ownerEmail }, data: { tenantId: tenant.id } })
-          : await tx.user.create({ data: { email: ownerEmail, tenantId: tenant.id } });
+          ? await tx.user.update({ where: { email: normalizedOwnerEmail }, data: { tenantId: tenant.id } })
+          : await tx.user.create({ data: { email: normalizedOwnerEmail, tenantId: tenant.id } });
       }
 
       await tx.auditLog.create({
