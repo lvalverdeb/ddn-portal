@@ -1,0 +1,42 @@
+# DDN Customer Data-Upload Portal
+
+A standalone, multi-tenant portal for customers to upload delivery/pickup
+data into a DDN deployment. DDN (`lvalverdeb/ddn`) is consumed only through
+its published HTTP API (see `packages/ddn-client`) — this repo never vendors
+DDN code. Gaps in that API are filed as issues against `lvalverdeb/ddn`
+(e.g. [ddn#1](https://github.com/lvalverdeb/ddn/issues/1)) rather than
+worked around silently; see `packages/bridge` for how a temporary workaround
+is isolated and tracked back to its upstream issue.
+
+## Layout
+
+- `apps/web` — Next.js app (App Router). Route Handlers under `app/api/*`
+  are the BFF: they hold tenant DDN credentials server-side and are the only
+  thing that calls `packages/ddn-client`.
+- `apps/worker` — background job processor that drains upload batches and
+  submits them to DDN via `packages/bridge`.
+- `packages/ddn-client` — typed HTTP client for DDN's API, plus a checked-in
+  OpenAPI contract snapshot and drift test (`tests/contract`).
+- `packages/bridge` — the v1 field-completion workaround for DDN's raw-intake
+  gap (ddn#1). One exported interface, `BatchSubmitter`; swapping to raw
+  intake once that issue ships is a one-line factory change plus removing
+  this package's geocoding/assignment/priority modules.
+- `packages/db` — Prisma schema and client.
+
+## Development
+
+```sh
+pnpm install
+pnpm db:generate
+pnpm dev
+```
+
+Requires a running DDN instance (see the `ddn` repo's `make bootstrap`) and
+`DATABASE_URL` pointed at a local Postgres. Copy `apps/web/.env.example` to
+`apps/web/.env.local` and fill in values.
+
+## Status
+
+Phase 0 (scaffold) — see the architecture plan for the full phased roadmap
+(tenant onboarding, read-only profile view, upload v1, raw-intake swap, v2
+config editing).

@@ -1,0 +1,206 @@
+// Data model for the DDN customer upload portal.
+//
+// `Tenant.credential` models "DDN has no auth today" as a value
+// ({"kind":"none"}), not an absent column, so upstream DDN adding auth is a
+// data migration for existing tenants, not a schema migration.
+//
+// `UploadChunk` stores both the raw customer row and the exact payload sent
+// to DDN. DDN's own idempotency replay cache is Redis-backed with a 24h TTL
+// (ddn: profiles/ddn/api/idempotency.py) and its Store is in-memory by
+// design (ddn: profiles/ddn/api/store.py) -- a DDN restart can lose data
+// while still replaying a stale 202. This table, not DDN, is the portal's
+// durable record of what was submitted.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CredentialKind {
+  NONE
+  API_KEY
+  BEARER
+}
+
+enum PortalRole {
+  ADMIN
+  MEMBER
+}
+
+enum BatchStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  COMPLETED_WITH_FLAGS
+  FAILED
+}
+
+enum ChunkKind {
+  ENVELOPE
+  MAILBAG
+}
+
+enum ChunkStatus {
+  PENDING
+  SUBMITTED
+  VERIFIED
+  FLAGGED
+  FAILED
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  ddnBaseUrl String  @map("ddn_base_url")
+
+  credentialKind CredentialKind @default(NONE) @map("credential_kind")
+  // Reference into a secrets store (KMS / envelope-encrypted blob) --
+  // never the credential value itself. Open item: exact storage mechanism,
+  // tracked in the architecture plan, not decided by this schema.
+  credentialSecretRef String? @map("credential_secret_ref")
+
+  // Cache of GET /profiles/{profileId} -- read-only in v1, refreshed on
+  // registration and on a schedule. Source of truth stays DDN; this is a
+  // cache, never edited here.
+  profileId        String?   @map("profile_id")
+  profileCache     Json?     @map("profile_cache")
+  profileVersion   String?   @map("profile_version")
+  profileCachedAt  DateTime? @map("profile_cached_at")
+
+  distanceProvider String @default("haversine") @map("distance_provider")
+
+  ddnSpecVersion   String?   @map("ddn_spec_version")
+  ddnSpecCheckedAt DateTime? @map("ddn_spec_checked_at")
+
+  users         PortalUser[]
+  uploadBatches UploadBatch[]
+  auditLogs     AuditLog[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tenants")
+}
+
+model PortalUser {
+  id            String   @id @default(cuid())
+  tenantId      String   @map("tenant_id")
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email         String   @unique
+  name          String?
+  role          PortalRole @default(MEMBER)
+
+  accounts Account[]
+  sessions Session[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("portal_users")
+}
+
+// Auth.js v5 (database session strategy) adapter models.
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  user              PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  user         PortalUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expires      DateTime
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model UploadBatch {
+  id        String      @id @default(cuid())
+  tenantId  String      @map("tenant_id")
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  mailbagId String      @map("mailbag_id")
+  status    BatchStatus @default(PENDING)
+  fileName  String      @map("file_name")
+  // Idempotency-Key sent to DDN for this batch's /envelopes/batch and
+  // /pickups calls. A new key is only ever minted by an explicit, audited
+  // admin action (see AuditLog), never by automatic retry.
+  idempotencyKey String  @map("idempotency_key")
+
+  chunks UploadChunk[]
+
+  receivedAt   DateTime  @default(now()) @map("received_at")
+  processedAt  DateTime? @map("processed_at")
+  errorMessage String?   @map("error_message")
+
+  @@index([tenantId, status])
+  @@map("upload_batches")
+}
+
+model UploadChunk {
+  id      String      @id @default(cuid())
+  batchId String      @map("batch_id")
+  batch   UploadBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  kind    ChunkKind
+  status  ChunkStatus @default(PENDING)
+
+  // The row exactly as the customer supplied it.
+  rawRow Json @map("raw_row")
+  // The exact payload sent to DDN (Envelope or Mailbag per
+  // profiles/ddn/api/schemas.py), once computed.
+  ddnPayload Json? @map("ddn_payload")
+
+  // Non-fatal issues surfaced to the uploader, never auto-resolved:
+  // low-confidence geocode, near-equidistant facility assignment, etc.
+  flags Json[] @default([])
+
+  submittedAt DateTime? @map("submitted_at")
+  verifiedAt  DateTime? @map("verified_at")
+  errorMessage String?  @map("error_message")
+
+  @@index([batchId, status])
+  @@map("upload_chunks")
+}
+
+model AuditLog {
+  id       String   @id @default(cuid())
+  tenantId String   @map("tenant_id")
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actor    String
+  action   String
+  subject  String
+  detail   Json?
+  at       DateTime @default(now())
+
+  @@index([tenantId, at])
+  @@map("audit_logs")
+}
