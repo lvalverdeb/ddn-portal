@@ -75,9 +75,13 @@ export default async function UploadBatchPage({ params }: { params: { batchId: s
                 <td style={td}>
                   {chunk.errorMessage ? <p>{chunk.errorMessage}</p> : null}
                   <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
-                    {flags.map((flag, i) => (
-                      <li key={i}>{describeFlag(flag)}</li>
-                    ))}
+                    {flags
+                      // unknown_priority_tier rows already show errorMessage
+                      // above, which says the same thing -- don't repeat it.
+                      .filter((flag) => flag.kind !== "unknown_priority_tier")
+                      .map((flag, i) => (
+                        <li key={i}>{describeFlag(flag)}</li>
+                      ))}
                   </ul>
                 </td>
               </tr>

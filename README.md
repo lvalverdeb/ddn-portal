@@ -52,6 +52,9 @@ the configured `EMAIL_SERVER` (magic link) afterward.
 
 ## Status
 
-Phase 0 (scaffold) — see the architecture plan for the full phased roadmap
-(tenant onboarding, read-only profile view, upload v1, raw-intake swap, v2
-config editing).
+Phases 0–3 done (scaffold, tenant onboarding, read-only profile view,
+upload v1 with the bridge submitter and flagged-row report). Phase 4
+(raw-intake swap) is blocked on upstream
+[ddn#1](https://github.com/lvalverdeb/ddn/issues/1); phase 5 (config
+editing) is blocked on a persistence gap in DDN's own profile store. See
+the architecture plan for the full phased roadmap.

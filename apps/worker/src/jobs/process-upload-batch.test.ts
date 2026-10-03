@@ -105,10 +105,15 @@ describe("processUploadBatch writeback", () => {
     expect(tierUpdate?.data).toMatchObject({ status: "FAILED", submittedAt: null });
     expect(tierUpdate?.data.errorMessage).toMatch(/bogus-tier/);
     expect(tierUpdate?.data).not.toHaveProperty("ddnPayload");
+    // The report page's flag detail column reads chunk.flags directly --
+    // a writeback that got status/submittedAt right but left flags at the
+    // schema default would still render an empty report.
+    expect(tierUpdate?.data.flags).toEqual([flags[0]]);
 
     const geoUpdate = findChunkUpdate("chunk-geo");
     expect(geoUpdate?.data).toMatchObject({ status: "FLAGGED", ddnPayload: sentEnvelope });
     expect(geoUpdate?.data.submittedAt).toBeInstanceOf(Date);
+    expect(geoUpdate?.data.flags).toEqual([flags[1]]);
 
     const mailbagUpdate = findChunkUpdate("chunk-mailbag");
     expect(mailbagUpdate?.data).toMatchObject({ status: "SUBMITTED", ddnPayload: sentMailbag });
