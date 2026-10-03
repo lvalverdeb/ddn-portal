@@ -1,3 +1,5 @@
+import type { Envelope, Mailbag } from "@ddn-portal/ddn-client";
+
 /**
  * What a customer upload row actually contains -- the other half of the
  * field table in the architecture plan. Everything here is customer-
@@ -37,4 +39,9 @@ export interface SubmissionResult {
   package_ids: string[];
   mailbag_id: string;
   flags: Flag[];
+  /** The exact payloads built and sent to DDN -- `UploadChunk.ddnPayload`'s
+   * source. A row dropped by a flag (e.g. `unknown_priority_tier`) has no
+   * corresponding entry here; nothing was built for it. */
+  envelopes: Envelope[];
+  mailbag: Mailbag;
 }

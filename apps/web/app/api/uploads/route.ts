@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { Prisma } from "@ddn-portal/db";
 import { prisma } from "@/lib/db";
-import { requireTenantContext, UnauthenticatedError, NoTenantError } from "@/lib/tenant-context";
+import { requireTenantRecord, UnauthenticatedError, NoTenantError } from "@/lib/tenant-context";
 
 /**
  * Phase 0 scaffold only: accepts rows already parsed client-side (no CSV
@@ -14,7 +14,7 @@ import { requireTenantContext, UnauthenticatedError, NoTenantError } from "@/lib
 export async function POST(request: Request) {
   let ctx;
   try {
-    ctx = await requireTenantContext();
+    ctx = await requireTenantRecord();
   } catch (err) {
     if (err instanceof UnauthenticatedError) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
@@ -39,6 +39,21 @@ export async function POST(request: Request) {
     );
   }
 
+  // The customer's own file is a trust boundary: a row that names its own
+  // mailbag_id and disagrees with the batch's mailbag is rejected outright
+  // rather than silently overwritten with the form value.
+  const mismatched = envelopes.find(
+    (row) => typeof row.mailbag_id === "string" && row.mailbag_id !== mailbag.mailbag_id,
+  );
+  if (mismatched) {
+    return NextResponse.json(
+      {
+        error: `envelope row's mailbag_id ("${mismatched.mailbag_id}") does not match the batch's mailbag_id ("${mailbag.mailbag_id}")`,
+      },
+      { status: 400 },
+    );
+  }
+
   // Mirrors DDN's own §13.1 convention (profiles/ddn/api/idempotency.py): a
   // caller-supplied key lets a retried/double-clicked upload be recognized
   // as the same request rather than a new one. Falling back to a fresh
@@ -58,9 +73,13 @@ export async function POST(request: Request) {
         chunks: {
           create: [
             { kind: "MAILBAG", rawRow: mailbag as Prisma.InputJsonValue },
+            // Stamp mailbag_id from the batch's mailbag rather than trusting
+            // a per-row value -- the mismatch check above already rejected
+            // any row that disagreed, so this is normalization, not a
+            // silent overwrite of something the customer actually meant.
             ...envelopes.map((row) => ({
               kind: "ENVELOPE" as const,
-              rawRow: row as Prisma.InputJsonValue,
+              rawRow: { ...row, mailbag_id: mailbag.mailbag_id } as Prisma.InputJsonValue,
             })),
           ],
         },
@@ -97,7 +116,7 @@ export async function POST(request: Request) {
 export async function GET() {
   let ctx;
   try {
-    ctx = await requireTenantContext();
+    ctx = await requireTenantRecord();
   } catch (err) {
     if (err instanceof UnauthenticatedError) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });

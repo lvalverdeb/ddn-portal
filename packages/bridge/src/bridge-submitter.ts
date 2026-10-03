@@ -91,6 +91,22 @@ export class BridgeSubmitter implements BatchSubmitter {
     const batch: EnvelopeBatch = { envelopes };
     const ingestResult = await ctx.ddnClient.submitEnvelopeBatch(batch, ctx.idempotencyKey);
 
+    // Per-package verification, not an aggregate count: `accepted` agreeing
+    // with `envelopes.length` while the actual ids disagree is exactly the
+    // trap a prior review of this codebase's sibling project (DDN itself)
+    // flagged -- an aggregate tally can agree while the decomposition is
+    // wrong. Treat any mismatch as a hard failure of the batch, not a flag.
+    const sentIds = [...envelopes.map((e) => e.package_id)].sort();
+    const acceptedIds = [...ingestResult.package_ids].sort();
+    const idsMatch =
+      sentIds.length === acceptedIds.length && sentIds.every((id, i) => id === acceptedIds[i]);
+    if (!idsMatch) {
+      throw new Error(
+        `DDN's accepted package_ids (${acceptedIds.join(", ")}) do not match the ` +
+          `envelopes actually sent (${sentIds.join(", ")}) for idempotency key ${ctx.idempotencyKey}`,
+      );
+    }
+
     const totalWeightG = envelopes.reduce((sum, e) => sum + (e.weight_g ?? DEFAULT_WEIGHT_G), 0);
     const assemblyCount = envelopes.filter((e) => requiresAssembly(e.package_type)).length;
 
@@ -116,6 +132,8 @@ export class BridgeSubmitter implements BatchSubmitter {
       package_ids: ingestResult.package_ids,
       mailbag_id: mailbag.mailbag_id,
       flags,
+      envelopes,
+      mailbag,
     };
   }
 }

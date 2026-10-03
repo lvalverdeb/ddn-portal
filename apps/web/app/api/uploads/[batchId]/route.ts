@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireTenantContext, UnauthenticatedError, NoTenantError } from "@/lib/tenant-context";
+import { requireTenantRecord, UnauthenticatedError, NoTenantError } from "@/lib/tenant-context";
 
+/**
+ * The batch report page (`(portal)/uploads/[batchId]/page.tsx`) reads this
+ * batch directly via Prisma instead of calling this route -- same
+ * self-HTTP-call avoidance as `(portal)/profile/page.tsx`. This route has
+ * no in-app consumer as a result; it's BFF surface for a future non-page
+ * caller (a CLI, a status webhook), not dead code.
+ */
 export async function GET(_request: Request, { params }: { params: { batchId: string } }) {
   let ctx;
   try {
-    ctx = await requireTenantContext();
+    ctx = await requireTenantRecord();
   } catch (err) {
     if (err instanceof UnauthenticatedError) {
       return NextResponse.json({ error: "unauthenticated" }, { status: 401 });

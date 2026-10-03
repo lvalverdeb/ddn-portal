@@ -1,5 +1,5 @@
 import { createBatchSubmitter } from "@ddn-portal/bridge";
-import type { RawEnvelopeRow, RawMailbagRow } from "@ddn-portal/bridge";
+import type { Flag, RawEnvelopeRow, RawMailbagRow } from "@ddn-portal/bridge";
 import { DdnClient, resolveTenantCredential, parseProfileSummary } from "@ddn-portal/ddn-client";
 import { prisma } from "@ddn-portal/db";
 
@@ -50,28 +50,49 @@ export async function processUploadBatch(batchId: string, options: { mapboxApiKe
       mailbagChunk.rawRow as unknown as RawMailbagRow,
     );
 
-    const flagsByPackageId = new Map<string, unknown[]>();
+    const flagsByPackageId = new Map<string, Flag[]>();
     for (const flag of result.flags) {
       const existing = flagsByPackageId.get(flag.package_id) ?? [];
       existing.push(flag);
       flagsByPackageId.set(flag.package_id, existing);
     }
+    const envelopesByPackageId = new Map(result.envelopes.map((e) => [e.package_id, e]));
 
     const now = new Date();
     await prisma.$transaction([
       prisma.uploadChunk.update({
         where: { id: mailbagChunk.id },
-        data: { status: "SUBMITTED", submittedAt: now },
+        data: { status: "SUBMITTED", submittedAt: now, ddnPayload: result.mailbag as object },
       }),
       ...envelopeChunks.map((chunk) => {
         const row = chunk.rawRow as unknown as RawEnvelopeRow;
         const flags = flagsByPackageId.get(row.package_id) ?? [];
+        // A dropped row (unknown_priority_tier) was never built or sent --
+        // distinct from a row that was sent with only an advisory flag.
+        // Conflating the two here is exactly the defect this writeback
+        // exists to fix (see the Phase 3 plan's "Context" section).
+        const droppedFlag = flags.find(
+          (f): f is Extract<Flag, { kind: "unknown_priority_tier" }> =>
+            f.kind === "unknown_priority_tier",
+        );
+        if (droppedFlag) {
+          return prisma.uploadChunk.update({
+            where: { id: chunk.id },
+            data: {
+              status: "FAILED",
+              submittedAt: null,
+              flags: flags as object[],
+              errorMessage: `unknown priority tier "${droppedFlag.given}" -- row was not submitted to DDN`,
+            },
+          });
+        }
         return prisma.uploadChunk.update({
           where: { id: chunk.id },
           data: {
             status: flags.length > 0 ? "FLAGGED" : "SUBMITTED",
             submittedAt: now,
             flags: flags as object[],
+            ddnPayload: envelopesByPackageId.get(row.package_id) as object,
           },
         });
       }),
