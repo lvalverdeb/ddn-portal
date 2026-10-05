@@ -10,7 +10,7 @@ import { prisma } from "@ddn-portal/db";
  * `UploadChunk`, not DDN's 202, stays the durable record -- see the schema
  * comment and the architecture plan's note on DDN's non-durable `Store`.
  */
-export async function processUploadBatch(batchId: string, options: { mapboxApiKey: string }) {
+export async function processUploadBatch(batchId: string, options: { nominatimUserAgent: string }) {
   const batch = await prisma.uploadBatch.findUniqueOrThrow({
     where: { id: batchId },
     include: { tenant: true, chunks: true },
@@ -31,7 +31,7 @@ export async function processUploadBatch(batchId: string, options: { mapboxApiKe
 
     const credential = resolveTenantCredential(tenant);
     const ddnClient = new DdnClient({ baseUrl: tenant.ddnBaseUrl, credential });
-    const submitter = createBatchSubmitter({ mapboxApiKey: options.mapboxApiKey });
+    const submitter = createBatchSubmitter({ nominatimUserAgent: options.nominatimUserAgent });
 
     const mailbagChunk = batch.chunks.find((c) => c.kind === "MAILBAG");
     const envelopeChunks = batch.chunks.filter((c) => c.kind === "ENVELOPE");

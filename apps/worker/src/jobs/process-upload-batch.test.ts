@@ -95,7 +95,7 @@ describe("processUploadBatch writeback", () => {
     };
     mockSubmit.mockResolvedValue(result);
 
-    await processUploadBatch("batch-1", { mapboxApiKey: "test-key" });
+    await processUploadBatch("batch-1", { nominatimUserAgent: "test-agent" });
 
     // First direct update (before the transaction) flips the batch to
     // PROCESSING -- not part of the writeback under test, just the guard.
@@ -157,7 +157,7 @@ describe("processUploadBatch writeback", () => {
     };
     mockSubmit.mockResolvedValue(result);
 
-    await processUploadBatch("batch-2", { mapboxApiKey: "test-key" });
+    await processUploadBatch("batch-2", { nominatimUserAgent: "test-agent" });
 
     const cleanUpdate = findChunkUpdate("chunk-clean");
     expect(cleanUpdate?.data).toMatchObject({ status: "SUBMITTED", ddnPayload: sentEnvelope });
@@ -171,7 +171,7 @@ describe("processUploadBatch writeback", () => {
   it("does nothing for a batch that is not PENDING", async () => {
     mockFindUniqueOrThrow.mockResolvedValue({ id: "batch-3", status: "PROCESSING", chunks: [] });
 
-    await processUploadBatch("batch-3", { mapboxApiKey: "test-key" });
+    await processUploadBatch("batch-3", { nominatimUserAgent: "test-agent" });
 
     expect(mockBatchUpdate).not.toHaveBeenCalled();
     expect(mockSubmit).not.toHaveBeenCalled();

@@ -16,7 +16,7 @@ const POLL_INTERVAL_MS = 5_000;
 // specific to the `ddn` repo's own CLAUDE.md). Revisit with real usage.
 const PROFILE_REFRESH_INTERVAL_MS = 60 * 60 * 1000;
 
-async function pollOnce(mapboxApiKey: string) {
+async function pollOnce(nominatimUserAgent: string) {
   const batch = await prisma.uploadBatch.findFirst({
     where: { status: "PENDING" },
     orderBy: { receivedAt: "asc" },
@@ -24,7 +24,7 @@ async function pollOnce(mapboxApiKey: string) {
   if (!batch) return;
 
   try {
-    await processUploadBatch(batch.id, { mapboxApiKey });
+    await processUploadBatch(batch.id, { nominatimUserAgent });
   } catch (err) {
     console.error(`batch ${batch.id} failed:`, err);
   }
@@ -41,10 +41,10 @@ async function refreshProfilesOnce() {
   }
 }
 
-async function uploadBatchLoop(mapboxApiKey: string) {
+async function uploadBatchLoop(nominatimUserAgent: string) {
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    await pollOnce(mapboxApiKey);
+    await pollOnce(nominatimUserAgent);
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
   }
 }
@@ -58,15 +58,15 @@ async function profileRefreshLoop() {
 }
 
 async function main() {
-  const mapboxApiKey = process.env.MAPBOX_API_KEY;
-  if (!mapboxApiKey) {
-    throw new Error("MAPBOX_API_KEY is required");
+  const nominatimUserAgent = process.env.NOMINATIM_USER_AGENT;
+  if (!nominatimUserAgent) {
+    throw new Error("NOMINATIM_USER_AGENT is required");
   }
 
   console.log("worker started: polling for pending upload batches and tenant profile refreshes");
   // Two independent loops, not one interleaved loop -- a slow or failing
   // profile refresh must never delay upload-batch draining, and vice versa.
-  await Promise.all([uploadBatchLoop(mapboxApiKey), profileRefreshLoop()]);
+  await Promise.all([uploadBatchLoop(nominatimUserAgent), profileRefreshLoop()]);
 }
 
 main().catch((err) => {
