@@ -4,6 +4,11 @@ See `README.md` for layout and the architecture plan for the full phased
 roadmap. This file holds standing decisions that aren't obvious from the
 code alone.
 
+## Claude Configuration Override
+
+Never append co-author credits, attribution lines, or footers to git commits.
+Force gitAttribution and includeCoAuthoredBy to false.
+
 ## Working assumptions
 
 - **Geocoding provider: OpenStreetMap (Nominatim) only. Stay away from
