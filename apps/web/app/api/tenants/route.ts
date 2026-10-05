@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { hashPassword } from "@ddn-portal/db";
 import { refreshTenantProfile } from "@ddn-portal/tenant-ops";
 
 class OwnerConflictError extends Error {}
+class OwnerPasswordRequiredError extends Error {}
 
 /**
  * Portal-operator only (not a tenant-scoped resource): creating/listing
@@ -43,13 +45,14 @@ export async function POST(request: Request) {
   if (!admin) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
   const body = await request.json();
-  const { name, slug, ddnBaseUrl, profileId, ddnCustomerId, ownerEmail } = body as {
+  const { name, slug, ddnBaseUrl, profileId, ddnCustomerId, ownerEmail, ownerPassword } = body as {
     name?: string;
     slug?: string;
     ddnBaseUrl?: string;
     profileId?: string;
     ddnCustomerId?: string;
     ownerEmail?: string;
+    ownerPassword?: string;
   };
   if (!name || !slug || !ddnBaseUrl) {
     return NextResponse.json(
@@ -86,9 +89,19 @@ export async function POST(request: Request) {
         if (existingOwner?.tenantId) {
           throw new OwnerConflictError();
         }
-        owner = existingOwner
-          ? await tx.user.update({ where: { email: normalizedOwnerEmail }, data: { tenantId: tenant.id } })
-          : await tx.user.create({ data: { email: normalizedOwnerEmail, tenantId: tenant.id } });
+        if (existingOwner) {
+          // Linking an existing tenant-less row never touches their
+          // password -- only a brand-new owner needs one set here.
+          owner = await tx.user.update({ where: { email: normalizedOwnerEmail }, data: { tenantId: tenant.id } });
+        } else {
+          if (!ownerPassword) {
+            throw new OwnerPasswordRequiredError();
+          }
+          const passwordHash = await hashPassword(ownerPassword);
+          owner = await tx.user.create({
+            data: { email: normalizedOwnerEmail, tenantId: tenant.id, passwordHash },
+          });
+        }
       }
 
       await tx.auditLog.create({
@@ -118,6 +131,12 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: "ownerEmail is already linked to another tenant" },
         { status: 409 },
+      );
+    }
+    if (err instanceof OwnerPasswordRequiredError) {
+      return NextResponse.json(
+        { error: "ownerPassword is required when ownerEmail does not already exist" },
+        { status: 400 },
       );
     }
     throw err;

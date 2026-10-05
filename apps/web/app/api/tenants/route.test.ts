@@ -52,18 +52,37 @@ describe.skipIf(!databaseUrl)("POST /api/tenants ownerEmail", () => {
     await prisma.$disconnect();
   });
 
-  it("links a brand-new ownerEmail to the created tenant", async () => {
+  it("links a brand-new ownerEmail to the created tenant, hashing the given password", async () => {
     const ownerEmail = `owner-new-${runId}@example.com`;
     const res = await postJson({
       name: "T1",
       slug: `t-${runId}-1`,
       ddnBaseUrl: "https://ddn.example.com",
       ownerEmail,
+      ownerPassword: "owner-password",
     });
     expect(res.status).toBe(201);
     const { tenant } = await res.json();
     const owner = await prisma.user.findUnique({ where: { email: ownerEmail } });
     expect(owner?.tenantId).toBe(tenant.id);
+    expect(owner?.passwordHash).toBeTruthy();
+    expect(owner?.passwordHash).not.toBe("owner-password");
+  });
+
+  it("400s, and creates no tenant, when ownerEmail is brand-new but ownerPassword is missing", async () => {
+    const ownerEmail = `owner-nopass-${runId}@example.com`;
+    const res = await postJson({
+      name: "T1b",
+      slug: `t-${runId}-1b`,
+      ddnBaseUrl: "https://ddn.example.com",
+      ownerEmail,
+    });
+    expect(res.status).toBe(400);
+
+    const createdTenant = await prisma.tenant.findUnique({ where: { slug: `t-${runId}-1b` } });
+    expect(createdTenant).toBeNull();
+    const owner = await prisma.user.findUnique({ where: { email: ownerEmail } });
+    expect(owner).toBeNull();
   });
 
   it("links an existing tenant-less ownerEmail", async () => {
@@ -82,13 +101,14 @@ describe.skipIf(!databaseUrl)("POST /api/tenants ownerEmail", () => {
     expect(owner?.tenantId).toBe(tenant.id);
   });
 
-  it("normalizes a mixed-case ownerEmail to lowercase, matching Auth.js's sign-in lookup", async () => {
+  it("normalizes a mixed-case ownerEmail to lowercase, matching the Credentials sign-in lookup", async () => {
     const mixedCaseEmail = `Owner-Mixed-${runId}@Example.com`;
     const res = await postJson({
       name: "T4",
       slug: `t-${runId}-4`,
       ddnBaseUrl: "https://ddn.example.com",
       ownerEmail: mixedCaseEmail,
+      ownerPassword: "owner-password",
     });
     expect(res.status).toBe(201);
     const { tenant } = await res.json();

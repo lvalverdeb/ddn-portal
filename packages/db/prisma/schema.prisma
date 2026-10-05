@@ -111,6 +111,11 @@ model User {
   emailVerified DateTime? @map("email_verified")
   image         String?
   role          PortalRole @default(MEMBER)
+  // Hashed with packages/db's scrypt helper (password.ts), never the raw
+  // password. Nullable because existing rows predate password auth; a
+  // missing hash means that user simply can't sign in (apps/web/lib/auth.ts
+  // treats it the same as a wrong password, not a crash).
+  passwordHash  String?  @map("password_hash")
 
   accounts Account[]
   sessions Session[]

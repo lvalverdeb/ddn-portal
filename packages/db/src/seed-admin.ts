@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
+import { hashPassword } from "./password";
 
 /**
  * Creates `email` as PortalRole.ADMIN if no user exists yet, or promotes an
@@ -11,23 +12,32 @@ import type { PrismaClient } from "@prisma/client";
  * portal-operator admin isn't required to belong to any tenant (see the
  * nullable `tenantId` note on the `User` model), and a tenant-scoped
  * MEMBER being promoted to also act as an operator shouldn't lose their
- * tenant link.
+ * tenant link. Promoting also never overwrites an existing password hash
+ * with `password` -- re-running this to re-grant ADMIN must not silently
+ * reset a password the user may have already been using.
  */
-export async function seedAdmin(prisma: PrismaClient, email: string) {
-  // Lowercased, unlike route.ts's ownerEmail handling (which stores
-  // whatever case the operator typed): Auth.js's email provider normalizes
-  // the identifier to lowercase (@auth/core's default `normalizeIdentifier`,
-  // `email.toLowerCase().trim()`) before every `getUserByEmail` lookup at
-  // sign-in. A seeded row stored in its original case would never match
-  // that lookup -- the admin's magic link would silently create a second,
-  // MEMBER-role row instead of signing in as the seeded ADMIN.
+export async function seedAdmin(prisma: PrismaClient, email: string, password: string) {
+  // Lowercased to match apps/web/lib/auth.ts's authorize(), which
+  // normalizes the same way before its lookup -- a seeded row stored in
+  // its original case would never match that lookup, so the admin's own
+  // credentials would silently fail to find this row.
   const normalized = email.trim().toLowerCase();
   if (!normalized) {
     throw new Error("seedAdmin: email must not be empty");
   }
-  return prisma.user.upsert({
-    where: { email: normalized },
-    create: { email: normalized, role: "ADMIN" },
-    update: { role: "ADMIN" },
-  });
+  if (!password) {
+    throw new Error("seedAdmin: password must not be empty");
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email: normalized } });
+  if (!existing) {
+    const passwordHash = await hashPassword(password);
+    return prisma.user.create({ data: { email: normalized, role: "ADMIN", passwordHash } });
+  }
+
+  if (existing.passwordHash) {
+    return prisma.user.update({ where: { email: normalized }, data: { role: "ADMIN" } });
+  }
+  const passwordHash = await hashPassword(password);
+  return prisma.user.update({ where: { email: normalized }, data: { role: "ADMIN", passwordHash } });
 }

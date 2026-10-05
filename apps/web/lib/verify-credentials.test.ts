@@ -1,115 +1,73 @@
-import { randomUUID } from "node:crypto";
-import { PrismaAdapter } from "@auth/prisma-adapter";
-import { PrismaClient } from "@ddn-portal/db";
-import { afterAll, describe, expect, it } from "vitest";
+import { hashPassword } from "@ddn-portal/db";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
- * @auth/prisma-adapter's implementation hard-codes `prisma.user.*`,
- * `prisma.session.*`, etc. (not visible to tsc -- its .d.ts types the
- * `prisma` parameter generically), so a schema/adapter mismatch only
- * surfaces at runtime. This exercises the exact chain the Nodemailer
- * (magic-link) provider drives with database sessions: a token is issued
- * and consumed before a user even exists, then session lookup runs on
- * every subsequent request.
- *
- * Skipped (not failed) when no disposable database is configured --
- * nothing else in this repo's test suite touches a real database yet.
- * Point AUTH_ADAPTER_TEST_DATABASE_URL at a throwaway Postgres (never a
- * real dev/prod database: this test creates and deletes real rows).
+ * `verifyCredentials` is the pure logic behind the Credentials provider's
+ * `authorize()` -- mocking `./db`'s `prisma` here (rather than pointing at
+ * a real database, the convention `seed-admin.test.ts` and `password.test.ts`
+ * use for the DB-backed/no-DB-needed pieces this delegates to) keeps this
+ * fast and deterministic: the thing actually under test is the
+ * normalization and null-handling branches, not the Prisma wiring or the
+ * hash comparison, which those other suites already cover against both a
+ * real DB and in isolation.
  */
-describe("auth adapter wiring", () => {
-  const databaseUrl = process.env.AUTH_ADAPTER_TEST_DATABASE_URL;
-  const prisma = databaseUrl
-    ? new PrismaClient({ datasources: { db: { url: databaseUrl } } })
-    : undefined;
+vi.mock("./db", () => ({
+  prisma: { user: { findUnique: vi.fn() } },
+}));
 
-  afterAll(async () => {
-    await prisma?.$disconnect();
+import { prisma } from "./db";
+import { verifyCredentials } from "./verify-credentials";
+
+const findUnique = prisma.user.findUnique as unknown as ReturnType<typeof vi.fn>;
+
+describe("verifyCredentials", () => {
+  beforeEach(() => {
+    findUnique.mockReset();
   });
 
-  it.skipIf(!databaseUrl)(
-    "runs the full magic-link + database-session chain against a real database",
-    async () => {
-      const adapter = PrismaAdapter(prisma!);
-      const email = `adapter-test-${randomUUID()}@example.com`;
-      const token = randomUUID();
+  it("returns null when email or password is missing", async () => {
+    expect(await verifyCredentials(undefined, "pw")).toBeNull();
+    expect(await verifyCredentials("a@example.com", undefined)).toBeNull();
+    expect(findUnique).not.toHaveBeenCalled();
+  });
 
-      try {
-        await adapter.createVerificationToken!({
-          identifier: email,
-          token,
-          expires: new Date(Date.now() + 3600_000),
-        });
+  it("returns null when no user exists for the email", async () => {
+    findUnique.mockResolvedValue(null);
+    expect(await verifyCredentials("nobody@example.com", "pw")).toBeNull();
+  });
 
-        const used = await adapter.useVerificationToken!({ identifier: email, token });
-        expect(used).not.toBeNull();
+  it("returns null when the user has no password set yet", async () => {
+    findUnique.mockResolvedValue({ id: "1", email: "a@example.com", name: null, passwordHash: null });
+    expect(await verifyCredentials("a@example.com", "pw")).toBeNull();
+  });
 
-        expect(await adapter.getUserByEmail!(email)).toBeNull();
+  it("returns null on a wrong password", async () => {
+    findUnique.mockResolvedValue({
+      id: "1",
+      email: "a@example.com",
+      name: null,
+      passwordHash: await hashPassword("correct-password"),
+    });
+    expect(await verifyCredentials("a@example.com", "wrong-password")).toBeNull();
+  });
 
-        const user = await adapter.createUser!({ email, emailVerified: null } as never);
-        expect(user.id).toBeTruthy();
-        expect(user.email).toBe(email);
+  it("returns the user's id/email/name on a correct password", async () => {
+    findUnique.mockResolvedValue({
+      id: "1",
+      email: "a@example.com",
+      name: "Alice",
+      passwordHash: await hashPassword("correct-password"),
+    });
+    expect(await verifyCredentials("a@example.com", "correct-password")).toEqual({
+      id: "1",
+      email: "a@example.com",
+      name: "Alice",
+    });
+  });
 
-        const session = await adapter.createSession!({
-          sessionToken: randomUUID(),
-          userId: user.id,
-          expires: new Date(Date.now() + 3600_000),
-        });
-
-        const got = await adapter.getSessionAndUser!(session.sessionToken);
-        expect(got?.user.id).toBe(user.id);
-      } finally {
-        await prisma!.user.deleteMany({ where: { email } });
-      }
-    },
-  );
-
-  /**
-   * The "pre-existing user signs in" branch -- distinct from the test
-   * above. @auth/core's handle-login.js only calls `createUser` when
-   * `getUserByEmail` returns null; when a row already exists (e.g. one
-   * seedAdmin created) it calls `updateUser({id, emailVerified})` instead.
-   * That's a different hard-coded `prisma.user.*` accessor call the test
-   * above never exercises -- exactly the class of adapter/schema mismatch
-   * Step 1 found and fixed, so it needs its own coverage.
-   */
-  it.skipIf(!databaseUrl)(
-    "runs the magic-link chain for a user that already exists, via updateUser",
-    async () => {
-      const adapter = PrismaAdapter(prisma!);
-      const email = `adapter-test-existing-${randomUUID()}@example.com`;
-      const token = randomUUID();
-
-      try {
-        const existing = await prisma!.user.create({ data: { email, role: "ADMIN" } });
-
-        await adapter.createVerificationToken!({
-          identifier: email,
-          token,
-          expires: new Date(Date.now() + 3600_000),
-        });
-
-        const used = await adapter.useVerificationToken!({ identifier: email, token });
-        expect(used).not.toBeNull();
-
-        const found = await adapter.getUserByEmail!(email);
-        expect(found?.id).toBe(existing.id);
-
-        const updated = await adapter.updateUser!({ id: existing.id, emailVerified: new Date() });
-        expect(updated.id).toBe(existing.id);
-        expect(updated.emailVerified).not.toBeNull();
-
-        const session = await adapter.createSession!({
-          sessionToken: randomUUID(),
-          userId: updated.id,
-          expires: new Date(Date.now() + 3600_000),
-        });
-
-        const got = await adapter.getSessionAndUser!(session.sessionToken);
-        expect(got?.user.id).toBe(existing.id);
-      } finally {
-        await prisma!.user.deleteMany({ where: { email } });
-      }
-    },
-  );
+  it("normalizes email by trimming and lowercasing before lookup", async () => {
+    findUnique.mockResolvedValue(null);
+    await verifyCredentials("  Alice@Example.com  ", "pw");
+    expect(findUnique).toHaveBeenCalledWith({ where: { email: "alice@example.com" } });
+  });
 });

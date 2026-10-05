@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, describe, expect, it } from "vitest";
+import { verifyPassword } from "./password";
 import { seedAdmin } from "./seed-admin";
 
 /**
@@ -19,12 +20,13 @@ describe("seedAdmin", () => {
     await prisma?.$disconnect();
   });
 
-  it.skipIf(!databaseUrl)("creates a new user as ADMIN, tenant-less", async () => {
+  it.skipIf(!databaseUrl)("creates a new user as ADMIN, tenant-less, with a working password", async () => {
     const email = `seed-admin-test-${randomUUID()}@example.com`;
     try {
-      const user = await seedAdmin(prisma!, email);
+      const user = await seedAdmin(prisma!, email, "seed-admin-password");
       expect(user.role).toBe("ADMIN");
       expect(user.tenantId).toBeNull();
+      expect(await verifyPassword("seed-admin-password", user.passwordHash!)).toBe(true);
     } finally {
       await prisma!.user.deleteMany({ where: { email } });
     }
@@ -41,7 +43,7 @@ describe("seedAdmin", () => {
         });
         await prisma!.user.create({ data: { email, role: "MEMBER", tenantId: tenant.id } });
 
-        const user = await seedAdmin(prisma!, email);
+        const user = await seedAdmin(prisma!, email, "seed-admin-password");
         expect(user.role).toBe("ADMIN");
         expect(user.tenantId).toBe(tenant.id);
       } finally {
@@ -51,28 +53,39 @@ describe("seedAdmin", () => {
     },
   );
 
-  it.skipIf(!databaseUrl)("re-running with the same email is idempotent", async () => {
-    const email = `seed-admin-test-${randomUUID()}@example.com`;
-    try {
-      const first = await seedAdmin(prisma!, email);
-      const second = await seedAdmin(prisma!, email);
-      expect(second.id).toBe(first.id);
-      expect(second.role).toBe("ADMIN");
-    } finally {
-      await prisma!.user.deleteMany({ where: { email } });
-    }
-  });
+  it.skipIf(!databaseUrl)(
+    "re-running with the same email is idempotent and keeps the original password",
+    async () => {
+      const email = `seed-admin-test-${randomUUID()}@example.com`;
+      try {
+        const first = await seedAdmin(prisma!, email, "first-password");
+        const second = await seedAdmin(prisma!, email, "second-password");
+        expect(second.id).toBe(first.id);
+        expect(second.role).toBe("ADMIN");
+        // Re-granting ADMIN must not clobber a password already set.
+        expect(await verifyPassword("first-password", second.passwordHash!)).toBe(true);
+        expect(await verifyPassword("second-password", second.passwordHash!)).toBe(false);
+      } finally {
+        await prisma!.user.deleteMany({ where: { email } });
+      }
+    },
+  );
 
   it.skipIf(!databaseUrl)("rejects an empty email", async () => {
-    await expect(seedAdmin(prisma!, "   ")).rejects.toThrow();
+    await expect(seedAdmin(prisma!, "   ", "some-password")).rejects.toThrow();
+  });
+
+  it.skipIf(!databaseUrl)("rejects an empty password", async () => {
+    const email = `seed-admin-test-${randomUUID()}@example.com`;
+    await expect(seedAdmin(prisma!, email, "")).rejects.toThrow();
   });
 
   it.skipIf(!databaseUrl)(
-    "normalizes to lowercase, matching Auth.js's sign-in lookup",
+    "normalizes to lowercase, matching the Credentials provider's sign-in lookup",
     async () => {
       const email = `Seed-Admin-Test-${randomUUID()}@Example.com`;
       try {
-        const user = await seedAdmin(prisma!, email);
+        const user = await seedAdmin(prisma!, email, "seed-admin-password");
         expect(user.email).toBe(email.trim().toLowerCase());
       } finally {
         await prisma!.user.deleteMany({ where: { email: email.toLowerCase() } });

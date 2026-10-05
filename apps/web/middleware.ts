@@ -11,15 +11,14 @@ const SECURE_SESSION_COOKIE = `__Secure-${SESSION_COOKIE}`;
 /**
  * Route guard: everything except /login and the auth/webhook API routes
  * requires a session. This is an optimistic cookie-*presence* check only,
- * not a real session lookup -- deliberately. Database sessions (this app's
- * strategy, see lib/auth.ts) can only be validated with a Prisma query,
- * and middleware runs on the Edge runtime, which can't make one. Importing
- * the full lib/auth.ts here to call its `auth()` wrapper was tried first
- * and crashes at runtime ("The edge runtime does not support Node.js
- * 'stream' module"): that config's Nodemailer provider and PrismaAdapter
- * both pull in Node-only modules, invisible to `tsc`/`next build` because
- * neither executes middleware -- the same class of edge-invisible defect
- * as the original auth-adapter bug.
+ * not a real session lookup -- deliberately. The session is a JWT now (see
+ * lib/auth.ts), which is itself Edge-verifiable, but `lib/auth.ts`'s
+ * Credentials `authorize()` and its `jwt` callback both query `prisma`
+ * directly (no adapter), so the config as a whole is still Node-only.
+ * Importing it here to call its `auth()` wrapper crashes at runtime ("The
+ * edge runtime does not support Node.js 'stream' module") the same way it
+ * did before the magic-link -> password switch -- just via a different
+ * Node-only import now.
  *
  * So this only gates the obvious case (no cookie at all). A forged or
  * stale cookie value still fails the real check: `requireTenantContext()`

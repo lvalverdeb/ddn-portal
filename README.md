@@ -43,12 +43,12 @@ behind an existing admin session. Each new environment (including first
 local setup) needs one explicit seed step:
 
 ```sh
-SEED_ADMIN_EMAIL=you@example.com pnpm db:seed
+SEED_ADMIN_EMAIL=you@example.com SEED_ADMIN_PASSWORD=some-password pnpm db:seed
 ```
 
 Idempotent — safe to re-run. Promotes the row to `ADMIN` if it already
-exists, creates a tenant-less admin row if not. Sign in with that email via
-the configured `EMAIL_SERVER` (magic link) afterward.
+exists (without touching its password), creates a tenant-less admin row
+with that password if not. Sign in with that email/password afterward.
 
 ## Status
 
